@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prediksi Harga Ethereum</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <style>
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+        @media (max-width: 768px) {
+            .chart-container {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-center mb-2 text-indigo-600">PREDIKSI HARGA ETHEREUM</h1>
+        
+        <!-- Filter Data -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-gray-700 mb-2">Tanggal Mulai</label>
+                    <!-- Atribut min dan max membatasi date picker UI ke tahun 2025 -->
+                    <input type="date" id="startDate" min="2025-01-01" max="2025-12-31" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-2">Tanggal Akhir</label>
+                    <!-- Atribut min dan max membatasi date picker UI ke tahun 2025 -->
+                    <input type="date" id="endDate" min="2025-01-01" max="2025-12-31" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="flex items-end">
+                    <button onclick="loadData()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
+                        Terapkan
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Grafik Utama -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-800">Grafik Perbandingan Close Actual vs Prediksi</h2>
+                <div class="flex space-x-2">
+                    <button onclick="resetZoom()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-3 rounded text-sm">
+                        Reset Zoom
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="ethChart"></canvas>
+            </div>
+            <div class="mt-4 flex flex-wrap justify-center gap-4">
+                <div class="flex items-center">
+                    <div class="w-4 h-4 bg-blue-500 rounded-full mr-2"></div>
+                    <span class="text-sm text-gray-600">Close Actual</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="w-4 h-4 bg-orange-500 rounded-full mr-2"></div>
+                    <span class="text-sm text-gray-600">Close Prediksi</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabel Data -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800">Data Historis Ethereum</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white">
+                    <thead>
+                        <tr class="bg-gray-200 text-gray-700">
+                            <th class="py-3 px-4 text-left">Date</th>
+                            <th class="py-3 px-4 text-left">Open</th>
+                            <th class="py-3 px-4 text-left">High</th>
+                            <th class="py-3 px-4 text-left">Low</th>
+                            <th class="py-3 px-4 text-left">Close Actual</th>
+                            <th class="py-3 px-4 text-left">Close Prediksi</th>
+                            <th class="py-3 px-4 text-left">Volume</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataTable">
+                        <!-- Data akan dimuat di sini -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 flex justify-between items-center">
+                <div class="text-sm text-gray-600" id="tableInfo"></div>
+                <div class="flex space-x-2">
+                    <button onclick="prevPage()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-3 rounded text-sm" id="prevBtn" disabled>
+                        Previous
+                    </button>
+                    <button onclick="nextPage()" class="bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-3 rounded text-sm" id="nextBtn">
+                        Next
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variabel global
+        let ethChart;
+        let allData = [];
+        let currentPage = 1;
+        const rowsPerPage = 10;
+        let startDateFilter, endDateFilter;
+
+        // Fungsi untuk memuat data
+        async function loadData() {
+            let startDateInput = document.getElementById('startDate');
+            let endDateInput = document.getElementById('endDate');
+
+            let startDate = new Date(startDateInput.value);
+            let endDate = new Date(endDateInput.value);
+            
+            // Perbaikan: Paksa nilai input tanggal ke rentang 2025 jika kosong atau tidak valid
+            if (isNaN(startDate.getTime()) || !startDateInput.value || startDate.getFullYear() !== 2025) {
+                startDate = new Date('2025-01-01');
+                startDateInput.valueAsDate = startDate; // Set nilai input
+            }
+            if (isNaN(endDate.getTime()) || !endDateInput.value || endDate.getFullYear() !== 2025) {
+                endDate = new Date('2025-12-31');
+                endDateInput.valueAsDate = endDate; // Set nilai input
+            }
+
+            // Pastikan tanggal mulai tidak lebih besar dari tanggal akhir
+            if (startDate > endDate) {
+                alert('Tanggal mulai tidak boleh lebih besar dari tanggal akhir. Mengatur ulang rentang ke 1 Januari - 31 Desember 2025.');
+                startDate = new Date('2025-01-01');
+                endDate = new Date('2025-12-31');
+                startDateInput.valueAsDate = startDate;
+                endDateInput.valueAsDate = endDate;
+            }
+
+            startDateFilter = startDate;
+            endDateFilter = endDate;
+            
+            const formatDate = (date) => date.toISOString().split('T')[0];
+            const startStr = formatDate(startDate);
+            const endStr = formatDate(endDate);
+            
+            try {
+                const response = await fetch(`get_eth_data.php?start=${startStr}&end=${endStr}`);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}. Response: ${errorText}`);
+                }
+
+                let rawResponse;
+                try {
+                    rawResponse = await response.text();
+                    allData = JSON.parse(rawResponse);
+                } catch (jsonError) {
+                    throw new Error(`JSON parse error: ${jsonError.message}. Raw response: ${rawResponse}`);
+                }
+                
+                if (allData.error) {
+                    throw new Error(`Error dari server: ${allData.error}`);
+                }
+
+                if (allData.length === 0) {
+                    document.getElementById('dataTable').innerHTML = `<tr><td colspan="7" class="text-center py-4 text-gray-500">Tidak ada data untuk rentang tanggal yang dipilih.</td></tr>`;
+                    document.getElementById('tableInfo').textContent = `Menampilkan 0-0 dari 0 data`;
+                    document.getElementById('prevBtn').disabled = true;
+                    document.getElementById('nextBtn').disabled = true;
+                    if (ethChart) {
+                        ethChart.destroy();
+                        ethChart = null;
+                    }
+                    return;
+                }
+
+                updateChart();
+                currentPage = 1;
+                updateTable();
+            } catch (error) {
+                console.error('Error loading data:', error);
+                alert('Gagal memuat data. Silakan coba lagi. Detail error di console browser: ' + error.message);
+            }
+        }
+
+        // Fungsi untuk mengupdate grafik
+        function updateChart() {
+            const ctx = document.getElementById('ethChart').getContext('2d');
+            
+            const labels = allData.map(item => item.date);
+            const actualData = allData.map(item => item.close_actual);
+            const predictedData = allData.map(item => item.close_predicted);
+            
+            if (ethChart) {
+                ethChart.destroy();
+            }
+            
+            ethChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Close Actual',
+                            data: actualData,
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.1,
+                            fill: false
+                        },
+                        {
+                            label: 'Close Prediksi',
+                            data: predictedData,
+                            borderColor: 'rgba(249, 115, 22, 1)',
+                            backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            tension: 0.1,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true,
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'x',
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('en-US', { 
+                                            style: 'currency', 
+                                            currency: 'USD' 
+                                        }).format(context.parsed.y);
+                                    }
+                                    return label;
+                                }
+                            }
+                        },
+                        legend: {
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Tanggal'
+                            },
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Harga (USD)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        // Fungsi untuk mengupdate tabel
+        function updateTable() {
+            const tableBody = document.getElementById('dataTable');
+            const tableInfo = document.getElementById('tableInfo');
+            
+            const startIndex = (currentPage - 1) * rowsPerPage;
+            const endIndex = Math.min(startIndex + rowsPerPage, allData.length);
+            const paginatedData = allData.slice(startIndex, endIndex);
+            
+            tableBody.innerHTML = '';
+            
+            paginatedData.forEach(item => {
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-200 hover:bg-gray-50';
+                
+                row.innerHTML = `
+                    <td class="py-3 px-4">${item.date}</td>
+                    <td class="py-3 px-4">$${item.open.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td class="py-3 px-4">$${item.high.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td class="py-3 px-4">$${item.low.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td class="py-3 px-4">$${item.close_actual.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td class="py-3 px-4">$${item.close_predicted.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td class="py-3 px-4">${item.volume.toLocaleString()}</td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+            
+            tableInfo.textContent = `Menampilkan ${startIndex + 1}-${endIndex} dari ${allData.length} data`;
+            
+            document.getElementById('prevBtn').disabled = currentPage === 1;
+            document.getElementById('nextBtn').disabled = endIndex >= allData.length;
+        }
+
+        // Fungsi untuk reset zoom chart
+        function resetZoom() {
+            if (ethChart) {
+                ethChart.resetZoom();
+            }
+        }
+
+        // Fungsi untuk pagination
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                updateTable();
+            }
+        }
+
+        function nextPage() {
+            if ((currentPage * rowsPerPage) < allData.length) {
+                currentPage++;
+                updateTable();
+            }
+        }
+
+        // Inisialisasi saat halaman dimuat
+        document.addEventListener('DOMContentLoaded', function() {
+            let initialStartDateInput = document.getElementById('startDate');
+            let initialEndDateInput = document.getElementById('endDate');
+
+            // Set default tanggal ke 2025-01-01 dan 2025-12-31 jika input kosong
+            if (!initialStartDateInput.value) {
+                initialStartDateInput.value = '2025-01-01'; // Mengatur default ke awal 2025
+            }
+            if (!initialEndDateInput.value) {
+                initialEndDateInput.value = '2025-12-31'; // Mengatur default ke akhir 2025
+            }
+            
+            loadData();
+        });
+    </script>
+</body>
+</html>
